@@ -1,0 +1,4 @@
+event_id,user_id,event_type,event_time,device,browser,app_version
+E004,U104,LOGIN,2026-10-02 09:05:00,Mobile,Chrome,5.1
+E005,U105,PURCHASE,2026-10-02 09:15:00,Web,Edge,5.1
+E006,U106,SEARCH,2026-10-02 09:25:00,Mobile,Safari,5.2

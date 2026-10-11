@@ -1,0 +1,2 @@
+event_id,user_id,event_type,event_time,device,browser,app_version
+E011,U112,LOGIN,1791019500,Mobile,Chrome,5.3

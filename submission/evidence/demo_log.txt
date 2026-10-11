@@ -1,0 +1,20 @@
+Verified Spark Structured Streaming demonstration
+Runtime: PySpark 4.2.0, Java 17.0.16
+All four runs used the same source, output, and checkpoint directories.
+
+Run 1 - Day 01 initial five-column file:
+BATCH_PROCESSED {"batch_id": 0, "quarantined_records": 0, "valid_records": 3}
+
+Run 2 - Day 02 file with browser and app_version:
+BATCH_PROCESSED {"batch_id": 1, "quarantined_records": 0, "valid_records": 3}
+
+Application stopped. Day 03 and Day 04 arrived while it was stopped.
+Run 3 - Restarted using the existing checkpoint; Day 03 was processed:
+BATCH_PROCESSED {"batch_id": 2, "quarantined_records": 2, "valid_records": 3}
+
+Run 4 - Same checkpoint; incompatible Day 04 event_time was quarantined:
+BATCH_PROCESSED {"batch_id": 3, "quarantined_records": 1, "valid_records": 0}
+
+The monotonically increasing batch IDs show checkpoint recovery and
+incremental ingestion. Output is under ../output; the reused checkpoint is
+under ../checkpoint.

@@ -1,0 +1,6 @@
+event_id,user_id,event_type,event_time,device,browser,app_version
+E007,U107,LOGOUT,2026-10-03 09:05:00,Web,Chrome,5.2
+E008,U108,VIEW,2026-10-03 09:15:00,Mobile,Safari,5.2
+E009,U109,PAYMENT,2026-10-03 09:25:00,Web,Edge,5.3
+E010,U110,SEARCH,not-a-timestamp,Mobile,Chrome,5.3
+,U111,LOGIN,2026-10-03 09:45:00,Web,Edge,5.3

@@ -1,0 +1,4 @@
+event_id,user_id,event_type,event_time,device
+E001,U101,LOGIN,2026-10-01 09:10:00,Mobile
+E002,U102,PURCHASE,2026-10-01 09:20:00,Web
+E003,U103,SEARCH,2026-10-01 09:30:00,Mobile

@@ -1,7 +1,10 @@
 __pycache__/
 *.py[cod]
+*.crc
+_SUCCESS
 .pytest_cache/
 demo_workspace_*/
+demo_workspace/
 output/
 checkpoint/
 !submission/output/

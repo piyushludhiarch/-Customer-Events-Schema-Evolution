@@ -2,70 +2,77 @@
 
 from __future__ import annotations  # Enables modern type-hint behavior.
 
-import argparse  # Reads optional settings supplied by the user.
-import os  # Reads environment settings and detects Windows.
-import shutil  # Copies each sample CSV into the streaming input folder.
-import subprocess  # Starts the Spark application for each demonstration stage.
-import sys  # Finds the current Python and returns error codes.
-from datetime import datetime  # Creates a unique default demo folder name.
-from pathlib import Path  # Handles file and folder paths safely.
+import argparse                      # Reads optional settings supplied by the user.
+import filecmp                        # Detects whether a sample file was already staged.
+import os                             # Reads environment settings and detects Windows.
+import shutil                     # Copies each sample CSV into the streaming input folder.
+import subprocess                 # Starts the Spark application for each demonstration stage.
+import sys                        # Finds the current Python and returns error codes.
+from datetime import datetime      # Gives each staged CSV a unique name.
+from pathlib import Path             # Handles file and folder paths safely.
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]  # Finds the main project folder from this script's location.
-SAMPLE_DIR = PROJECT_ROOT / "input"  # Points to the folder containing the example CSV files.
+import pyspark                      # Locates the Spark distribution for Windows launchers.
 
-
-def run_stage(stage: str, source: Path, output: Path, checkpoint: Path, log_path: Path) -> None:  # Runs one stream stage.
-    command = [  # Starts the command used to launch the streaming program.
-        sys.executable,  # Uses the same Python interpreter as this demo script.
-        str(PROJECT_ROOT / "app.py"),  # Runs the project's Spark application.
-        "--source",  # Tells the application its next argument is the input folder.
-        str(source),  # Supplies the folder where sample files arrive.
-        "--output",  # Tells the application its next argument is the output folder.
-        str(output),  # Supplies the folder where results should be written.
-        "--checkpoint",  # Tells the application its next argument is the checkpoint folder.
-        str(checkpoint),  # Reuses this folder so Spark can recover its progress.
-        "--once",  # Stops after processing all files currently available.
-    ]  # Finishes building the application command.
-    print(f"\n=== {stage} ===", flush=True)  # Announces which part of the demo is running.
-    environment = os.environ.copy()  # Copies settings so the child Spark process inherits them.
-    environment["PYSPARK_PYTHON"] = sys.executable  # Tells Spark which Python to use for worker processes.
-    environment["PYSPARK_DRIVER_PYTHON"] = sys.executable  # Tells PySpark which Python to use for the driver.
-    java_home = environment.get("JAVA_HOME")  # Reads the Java installation path if it was configured.
-    if java_home:  # Adds Java to PATH only when JAVA_HOME has a value.
-        environment["PATH"] = str(Path(java_home) / "bin") + os.pathsep + environment.get("PATH", "")  # Helps Spark find Java.
-
-    result = subprocess.run(  # Starts Spark and waits for this stage to finish.
-        command,  # Runs the command assembled above.
-        cwd=PROJECT_ROOT,  # Runs from the project folder so relative paths work.
-        env=environment,  # Passes the Python and Java settings into the Spark process.
-        text=True,  # Captures the program output as readable text.
-        encoding="utf-8",  # Reads output using UTF-8 encoding.
-        errors="replace",  # Replaces any characters that cannot be decoded.
-        stdout=subprocess.PIPE,  # Captures normal output for the demo log.
-        stderr=subprocess.STDOUT,  # Combines error messages with normal output.
-        check=False,  # Lets this script print output before handling a failure.
-    )  # Finishes and returns the completed process result.
-    with log_path.open("a", encoding="utf-8") as log:  # Opens the evidence log to add this stage's output.
-        log.write(f"\n=== {stage} ===\n{result.stdout}")  # Saves the stage name and Spark output for evidence.
-    print(result.stdout, end="")  # Shows Spark output in the terminal.
-    if result.returncode != 0:  # Checks whether Spark reported a failure.
-        raise RuntimeError(f"{stage} failed with exit code {result.returncode}; see {log_path}")  # Reports failure and log location.
+PROJECT_ROOT = Path(__file__).resolve().parents[1]           # Finds the main project folder from this script's location.
+SAMPLE_DIR = PROJECT_ROOT / "input"                               # Points to the folder containing the example CSV files.
+DEMO_DIR = PROJECT_ROOT / "demo_workspace"                  # Reuses one workspace instead of making a folder per run.
 
 
-def copy_arrival(day: str, source: Path) -> None:  # Copies one sample day into the watched folder.
-    target = source / f"{day}.csv"  # Builds a unique CSV name in the incoming folder.
-    shutil.copy2(SAMPLE_DIR / day / "events.csv", target)  # Copies the chosen day's sample file.
-    print(f"Arrived: {target.name}", flush=True)  # Confirms the new file arrived.
+def run_stage(stage: str, source: Path, output: Path, checkpoint: Path, log_path: Path) -> None:       # Runs one stream stage.
+    log_path.parent.mkdir(parents=True, exist_ok=True)                                  # Ensures the evidence folder exists before writing logs.
+    command = [                      # Starts the command used to launch the streaming program.
+        sys.executable,                    # Uses the same Python interpreter as this demo script.
+        str(PROJECT_ROOT / "app.py"),            # Runs the project's Spark application.
+        "--source",                             # Tells the application its next argument is the input folder.
+        str(source),                          # Supplies the folder where sample files arrive.
+        "--output",                            # Tells the application its next argument is the output folder.
+        str(output),                          #  Supplies the folder where results should be written.
+        "--checkpoint",                          # Tells the application its next argument is the checkpoint folder.
+        str(checkpoint),                          # Reuses this folder so Spark can recover its progress.
+        "--once",                                # Stops after processing all files currently available.
+    ]                                           # Finishes building the application command.
+    print(f"\n=== {stage} ===", flush=True)                    # Announces which part of the demo is running.
+    environment = os.environ.copy()                                # Copies settings so the child Spark process inherits them.
+    environment["PATH"] = str(Path(sys.executable).resolve().parent) + os.pathsep + environment.get("PATH", "")
+    environment["PYSPARK_PYTHON"] = "python"  # Resolves the selected interpreter through PATH without spaces.
+    environment["PYSPARK_DRIVER_PYTHON"] = "python"
+    environment["SPARK_HOME"] = str(Path(pyspark.__file__).resolve().parent)  # Avoids Windows path lookup with Python paths containing spaces.
+    java_home = environment.get("JAVA_HOME")                       # Reads the Java installation path if it was configured.
+    if java_home:                                                 # Adds Java to PATH only when JAVA_HOME has a value.
+        environment["PATH"] = str(Path(java_home) / "bin") + os.pathsep + environment.get("PATH", "")    # Helps Spark find Java.
+
+    result = subprocess.run(                         # Starts Spark and waits for this stage to finish.
+        command,                                  # Runs the command assembled above.
+        cwd=PROJECT_ROOT,                            # Runs from the project folder so relative paths work.
+        env=environment,                             # Passes the Python and Java settings into the Spark process.
+        text=True,                                     # Captures the program output as readable text.
+        encoding="utf-8",                              # Reads output using UTF-8 encoding.
+        errors="replace",                             # Replaces any characters that cannot be decoded.
+        stdout=subprocess.PIPE,                       # Captures normal output for the demo log.
+        stderr=subprocess.STDOUT,                      # Combines error messages with normal output.
+        check=False,                              # Lets this script print output before handling a failure.
+    )                                                     # Finishes and returns the completed process result.
+    with log_path.open("a", encoding="utf-8") as log:                 # Opens the evidence log to add this stage's output.
+        log.write(f"\n=== {stage} ===\n{result.stdout}")                  # Saves the stage name and Spark output for evidence.
+    print(result.stdout, end="")                                    # Shows Spark output in the terminal.
+    if result.returncode != 0:                                       # Checks whether Spark reported a failure.
+        raise RuntimeError(f"{stage} failed with exit code {result.returncode}; see {log_path}")      # Reports failure and log location.
 
 
-def parse_args() -> argparse.Namespace:  # Reads settings for the demonstration.
-    parser = argparse.ArgumentParser(description=__doc__)  # Creates a parser using this script's description.
-    parser.add_argument(  # Adds a setting for where demo data and results are saved.
-        "--work-dir",  # Names the optional work-folder setting.
-        type=Path,  # Converts the supplied text into a path.
-        default=PROJECT_ROOT / f"demo_workspace_{datetime.now():%Y%m%d_%H%M%S}",  # Uses a new timestamped folder by default.
-        help="Fresh directory for staged input, output, checkpoint, and evidence",  # Explains this setting.
-    )  # Finishes adding the work-folder setting.
+def copy_arrival(day: str, source: Path) -> None:                         # Copies a sample only when it is not already staged.
+    sample = SAMPLE_DIR / day / "events.csv"                              # Locates the sample file for this stage.
+    if any(filecmp.cmp(sample, existing, shallow=False) for existing in source.glob("*.csv")):
+        print(f"Already staged: {day}.csv", flush=True)
+        return
+    target = source / f"{day}.csv"                                        # Uses a stable filename across demo runs.
+    if target.exists():
+        target = source / f"{datetime.now():%Y%m%d_%H%M%S_%f}_{day}.csv"  # Keeps changed versions as new stream inputs.
+    shutil.copy2(sample, target)                                           # Copies the chosen day's sample file.
+    print(f"Arrived: {target.name}", flush=True)                              # Confirms the new file arrived.
+
+
+def parse_args() -> argparse.Namespace:                            # Reads settings for the demonstration.
+    parser = argparse.ArgumentParser(description=__doc__)               # Creates a parser using this script's description.
     parser.add_argument(  # Adds a setting for the Java installation.
         "--java-home",  # Names the optional Java-folder setting.
         type=Path,  # Converts the supplied text into a path.
@@ -79,19 +86,16 @@ def main() -> None:  # Runs all the demonstration stages in order.
     args = parse_args()  # Reads the output-folder and Java settings.
     if args.java_home:  # Checks whether a Java installation was selected.
         os.environ["JAVA_HOME"] = str(args.java_home.resolve())  # Makes the selected Java path visible to Spark.
-    work_dir = args.work_dir.resolve()  # Converts the work folder to an absolute path.
-    if work_dir.exists() and any(work_dir.iterdir()):  # Avoids overwriting files in a non-empty folder.
-        raise FileExistsError(f"Work directory is not empty: {work_dir}")  # Tells the user to choose a fresh folder.
-
-    source = work_dir / "incoming"  # Creates the folder that Spark watches for CSV files.
-    output = work_dir / "output"  # Creates the folder where Spark writes results.
-    checkpoint = work_dir / "checkpoint"  # Creates the folder where Spark remembers processed files.
-    evidence = work_dir / "evidence"  # Creates the folder for the demo log.
+    if not os.environ.get("JAVA_HOME"):
+        raise RuntimeError("JAVA_HOME is not set. Install a JDK 17+ and rerun the demo.")
+    source = DEMO_DIR / "incoming"  # Reuses the folder that Spark watches for CSV files.
+    output = DEMO_DIR / "output"  # Reuses the folder where Spark writes results.
+    checkpoint = DEMO_DIR / "checkpoint"  # Reuses Spark's progress between demo runs.
+    evidence = DEMO_DIR / "evidence"  # Reuses the folder for the demo log.
     source.mkdir(parents=True, exist_ok=True)  # Creates the input folder and any missing parent folders.
     evidence.mkdir(parents=True, exist_ok=True)  # Creates the evidence folder and any missing parent folders.
     log_path = evidence / "demo_log.txt"  # Chooses the file that records each Spark run.
-
-    print(f"Demo workspace: {work_dir}", flush=True)  # Shows where output and evidence will be saved.
+    print(f"Demo workspace: {DEMO_DIR}", flush=True)  # Shows the persistent output and checkpoint location.
     copy_arrival("day_01", source)  # Adds the original five-column input file.
     run_stage("Start application; process Day 01", source, output, checkpoint, log_path)  # Processes the first day's file.
 

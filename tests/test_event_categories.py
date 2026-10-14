@@ -22,6 +22,10 @@ class CategorizeEventTests(unittest.TestCase):  # Groups related event-category 
         self.assertEqual(categorize_event(" purchase "), "TRANSACTION")  # Confirms spaces and letter case are ignored.
         self.assertEqual(categorize_event(None), "OTHER")  # Confirms a missing event name uses the fallback category.
 
+    def test_category_handles_non_string_inputs(self):  # Checks surprising values from malformed data.
+        self.assertEqual(categorize_event(123), "OTHER")  # Confirms numeric input falls back safely.
+
 
 if __name__ == "__main__":  # Checks whether this test file was launched directly.
     unittest.main()  # Runs all the tests in this file.
+  

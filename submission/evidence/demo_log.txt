@@ -1,20 +1,30 @@
-Verified Spark Structured Streaming demonstration
-Runtime: PySpark 4.2.0, Java 17.0.16
-All four runs used the same source, output, and checkpoint directories.
+Verified Spark Structured Streaming submission
+Runtime: Python 3.12, PySpark 4.2.0, Java 25
+All stages reused the same input directory and checkpoint.
 
-Run 1 - Day 01 initial five-column file:
+Day 01 - original five-column schema:
 BATCH_PROCESSED {"batch_id": 0, "quarantined_records": 0, "valid_records": 3}
 
-Run 2 - Day 02 file with browser and app_version:
+Day 02 - extended schema:
 BATCH_PROCESSED {"batch_id": 1, "quarantined_records": 0, "valid_records": 3}
 
-Application stopped. Day 03 and Day 04 arrived while it was stopped.
-Run 3 - Restarted using the existing checkpoint; Day 03 was processed:
+Day 03 - restarted with the same checkpoint:
 BATCH_PROCESSED {"batch_id": 2, "quarantined_records": 2, "valid_records": 3}
+Quarantined E010 for an unparseable event_time and one row for a missing event_id.
 
-Run 4 - Same checkpoint; incompatible Day 04 event_time was quarantined:
+Day 04 - incompatible event_time:
 BATCH_PROCESSED {"batch_id": 3, "quarantined_records": 1, "valid_records": 0}
+Quarantined E011 for an unparseable event_time.
 
-The monotonically increasing batch IDs show checkpoint recovery and
-incremental ingestion. Output is under ../output; the reused checkpoint is
-under ../checkpoint.
+Parquet verification:
+- 9 unique valid event IDs, E001 through E009.
+- Day 01 browser and app_version values are null.
+- Day 02 and Day 03 valid rows preserve browser and app_version.
+- Statistics match the valid event data grouped by event_category and device.
+- Aggregate counts: DISCOVERY/Mobile 3, SESSION/Mobile 2, SESSION/Web 1,
+  TRANSACTION/Web 3.
+- Quarantined rows include quarantine_reason.
+
+Recovery verification:
+- Restarting with the same checkpoint and no new files wrote no new batch.
+- A new E012 event was processed once as batch 8 after recovery.
